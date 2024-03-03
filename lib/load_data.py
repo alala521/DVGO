@@ -12,7 +12,7 @@ def load_data(args):
 
 
     if args.dataset_type == 'blender':
-        images, poses, render_poses, hwf, i_split = load_blender_data(args.datadir, args.half_res, args.testskip)
+        images, poses, render_poses, hwf, i_split = load_blender_data(args.datadir, args.testskip)
         print('Loaded blender', images.shape, render_poses.shape, hwf, args.datadir)
         i_train, i_val, i_test = i_split
 
@@ -31,7 +31,6 @@ def load_data(args):
     H, W = int(H), int(W)
     hwf = [H, W, focal]
     HW = np.array([im.shape[:2] for im in images])
-    irregular_shape = (images.dtype is np.dtype('object'))
 
     if K is None:
         K = np.array([
@@ -52,8 +51,7 @@ def load_data(args):
         near=near, far=far, near_clip=near_clip,
         i_train=i_train, i_val=i_val, i_test=i_test,
         poses=poses, render_poses=render_poses,
-        images=images, depths=depths,
-        irregular_shape=irregular_shape,
+        images=images, depths=depths
     )
     return data_dict
 

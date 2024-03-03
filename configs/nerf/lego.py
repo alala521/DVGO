@@ -15,10 +15,7 @@ data = dict(
     white_bkgd=True,               # use white bkgd for rendering
     load2gpu_on_the_fly=False,    # do not load all images into gpu (to save gpu memory)
     testskip=1,                   # subsample testset to preview results
-    half_res=False,               # [TODO]
 )
-
-
 
 
 

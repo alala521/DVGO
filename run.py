@@ -6,7 +6,6 @@ import mmengine
 import numpy as np
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from lib import utils, dvgo
@@ -29,24 +28,6 @@ def config_parser():
                         help='do not reload optimizer state from saved ckpt')
     parser.add_argument("--ft_path", type=str, default='',
                         help='specific weights npy file to reload for coarse network')
-    parser.add_argument("--export_bbox_and_cams_only", type=str, default='',
-                        help='export scene bbox and camera poses for debugging and 3d visualization')
-    parser.add_argument("--export_coarse_only", type=str, default='')
-
-    # testing options
-    parser.add_argument("--render_only", action='store_true',
-                        help='do not optimize, reload weights and render out render_poses path')
-    parser.add_argument("--render_test", action='store_true')
-    parser.add_argument("--render_train", action='store_true')
-    parser.add_argument("--render_video", action='store_true')
-    parser.add_argument("--render_video_flipy", action='store_true')
-    parser.add_argument("--render_video_rot90", default=0, type=int)
-    parser.add_argument("--render_video_factor", type=float, default=0,
-                        help='downsampling factor to speed up rendering, set 4 or 8 for fast preview')
-    parser.add_argument("--dump_images", action='store_true')
-    parser.add_argument("--eval_ssim", action='store_true')
-    parser.add_argument("--eval_lpips_alex", action='store_true')
-    parser.add_argument("--eval_lpips_vgg", action='store_true')
 
     # logging/saving options
     parser.add_argument("--i_print",   type=int, default=500,
@@ -75,17 +56,16 @@ def load_everything(args, cfg):
     # remove useless field
     kept_keys = {
             'hwf', 'HW', 'Ks', 'near', 'far', 'near_clip',
-            'i_train', 'i_val', 'i_test', 'irregular_shape',
+            'i_train', 'i_val', 'i_test', 
             'poses', 'render_poses', 'images'}
     for k in list(data_dict.keys()):
         if k not in kept_keys:
             data_dict.pop(k)
 
     # construct data tensor
-    if data_dict['irregular_shape']:
-        data_dict['images'] = [torch.FloatTensor(im, device='cpu') for im in data_dict['images']]
-    else:
-        data_dict['images'] = torch.FloatTensor(data_dict['images'], device='cpu')
+
+    data_dict['images'] = torch.FloatTensor(data_dict['images'], device='cpu')
+    
     data_dict['poses'] = torch.Tensor(data_dict['poses'])
     return data_dict
 
@@ -210,10 +190,7 @@ def scene_rep_reconstruction(args, cfg, cfg_model, cfg_train, xyz_min, xyz_max, 
 
     # init batch rays sampler
     def gather_training_rays():
-        if data_dict['irregular_shape']:
-            rgb_tr_ori = [images[i].to('cpu' if cfg.data.load2gpu_on_the_fly else device) for i in i_train]
-        else:
-            rgb_tr_ori = images[i_train].to('cpu' if cfg.data.load2gpu_on_the_fly else device)
+        rgb_tr_ori = images[i_train].to('cpu' if cfg.data.load2gpu_on_the_fly else device)
 
         if cfg_train.ray_sampler == 'in_maskcache':
             rgb_tr, rays_o_tr, rays_d_tr, viewdirs_tr, imsz = dvgo.get_training_rays_in_maskcache_sampling(
@@ -239,7 +216,7 @@ def scene_rep_reconstruction(args, cfg, cfg_model, cfg_train, xyz_min, xyz_max, 
             cnt = model.voxel_count_views(
                     rays_o_tr=rays_o_tr, rays_d_tr=rays_d_tr, imsz=imsz, near=near, far=far,
                     stepsize=cfg_model.stepsize, downrate=cfg_train.pervoxel_lr_downrate,
-                    irregular_shape=data_dict['irregular_shape'])
+                    )
             optimizer.set_pervoxel_lr(cnt)
             model.mask_cache.mask[cnt.squeeze() <= 2] = False
         per_voxel_init()
@@ -349,7 +326,6 @@ def scene_rep_reconstruction(args, cfg, cfg_model, cfg_train, xyz_min, xyz_max, 
 
 
 def train(args, cfg, data_dict):
-
     # init
     print('train: start')
     eps_time = time.time()
@@ -419,10 +395,8 @@ if __name__=='__main__':
     data_dict = load_everything(args=args, cfg=cfg)
 
     # train
-    if not args.render_only:
-        train(args, cfg, data_dict)
-
-
-
+    train(args, cfg, data_dict)
     print('Done')
+    
+    
 

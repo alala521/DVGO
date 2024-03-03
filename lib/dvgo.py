@@ -202,7 +202,7 @@ class DirectVoxGO(torch.nn.Module):
         cache_grid_alpha = F.max_pool3d(cache_grid_alpha, kernel_size=3, padding=1, stride=1)[0,0]
         self.mask_cache.mask &= (cache_grid_alpha > self.fast_color_thres)
 
-    def voxel_count_views(self, rays_o_tr, rays_d_tr, imsz, near, far, stepsize, downrate=1, irregular_shape=False):
+    def voxel_count_views(self, rays_o_tr, rays_d_tr, imsz, near, far, stepsize, downrate=1):
         print('dvgo: voxel_count_views start')
         far = 1e9  # the given far can be too small while rays stop when hitting scene bbox
         eps_time = time.time()
@@ -212,12 +212,9 @@ class DirectVoxGO(torch.nn.Module):
         device = rng.device
         for rays_o_, rays_d_ in zip(rays_o_tr.split(imsz), rays_d_tr.split(imsz)):
             ones = grid.DenseGrid(1, self.world_size, self.xyz_min, self.xyz_max)
-            if irregular_shape:
-                rays_o_ = rays_o_.split(10000)
-                rays_d_ = rays_d_.split(10000)
-            else:
-                rays_o_ = rays_o_[::downrate, ::downrate].to(device).flatten(0,-2).split(10000)
-                rays_d_ = rays_d_[::downrate, ::downrate].to(device).flatten(0,-2).split(10000)
+
+            rays_o_ = rays_o_[::downrate, ::downrate].to(device).flatten(0,-2).split(10000)
+            rays_d_ = rays_d_[::downrate, ::downrate].to(device).flatten(0,-2).split(10000)
 
             for rays_o, rays_d in zip(rays_o_, rays_d_):
                 vec = torch.where(rays_d==0, torch.full_like(rays_d, 1e-6), rays_d)

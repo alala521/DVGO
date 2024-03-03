@@ -16,20 +16,6 @@
                 "--no_reload"
             ],
             "cwd": "/home/shiji/project/DVGO_neus"
-        },
-        {
-            "name": "Python: run.py --config configs/nerf/lego.py --no_reload",
-            "type": "python",
-            "request": "launch",
-            "program": "run.py",
-            "env": {},
-            "console": "integratedTerminal",
-            "args": [
-                "--config",
-                "configs/nerf/lego.py",
-                "--no_reload"
-            ],
-            "cwd": "/home/shiji/project/DVGO_neus"
         }
     ]
 }
