@@ -231,12 +231,6 @@ def scene_rep_reconstruction(args, cfg, cfg_model, cfg_train, xyz_min, xyz_max, 
                     ndc=cfg.data.ndc, inverse_y=cfg.data.inverse_y,
                     flip_x=cfg.data.flip_x, flip_y=cfg.data.flip_y,
                     model=model, render_kwargs=render_kwargs)
-        elif cfg_train.ray_sampler == 'flatten':
-            rgb_tr, rays_o_tr, rays_d_tr, viewdirs_tr, imsz = dvgo.get_training_rays_flatten(
-                rgb_tr_ori=rgb_tr_ori,
-                train_poses=poses[i_train],
-                HW=HW[i_train], Ks=Ks[i_train], ndc=cfg.data.ndc, inverse_y=cfg.data.inverse_y,
-                flip_x=cfg.data.flip_x, flip_y=cfg.data.flip_y)
         else:
             rgb_tr, rays_o_tr, rays_d_tr, viewdirs_tr, imsz = dvgo.get_training_rays(
                 rgb_tr=rgb_tr_ori,
@@ -287,7 +281,7 @@ def scene_rep_reconstruction(args, cfg, cfg_model, cfg_train, xyz_min, xyz_max, 
             torch.cuda.empty_cache()
 
         # random sample rays
-        if cfg_train.ray_sampler in ['flatten', 'in_maskcache']:
+        if cfg_train.ray_sampler == 'in_maskcache':
             sel_i = batch_index_sampler()
             target = rgb_tr[sel_i]
             rays_o = rays_o_tr[sel_i]
