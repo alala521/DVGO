@@ -27,7 +27,6 @@ class DirectVoxGO(torch.nn.Module):
                  mask_cache_path=None, mask_cache_thres=1e-3, mask_cache_world_size=None,
                  fast_color_thres=0,
                  density_type='DenseGrid', k0_type='DenseGrid',
-                 density_config={}, k0_config={},
                  rgbnet_dim=0, rgbnet_direct=False, rgbnet_full_implicit=False,
                  rgbnet_depth=3, rgbnet_width=128,
                  viewbase_pe=4,
@@ -51,11 +50,10 @@ class DirectVoxGO(torch.nn.Module):
 
         # init density voxel grid
         self.density_type = density_type
-        self.density_config = density_config
         self.density = grid.create_grid(
                 density_type, channels=1, world_size=self.world_size,
                 xyz_min=self.xyz_min, xyz_max=self.xyz_max,
-                config=self.density_config)
+                )
 
         # init color representation
         self.rgbnet_kwargs = {
@@ -65,7 +63,6 @@ class DirectVoxGO(torch.nn.Module):
             'viewbase_pe': viewbase_pe,
         }
         self.k0_type = k0_type
-        self.k0_config = k0_config
         self.rgbnet_full_implicit = rgbnet_full_implicit
         if rgbnet_dim <= 0:
             # color voxel grid  (coarse stage)
@@ -73,7 +70,7 @@ class DirectVoxGO(torch.nn.Module):
             self.k0 = grid.create_grid(
                 k0_type, channels=self.k0_dim, world_size=self.world_size,
                 xyz_min=self.xyz_min, xyz_max=self.xyz_max,
-                config=self.k0_config)
+                )
             self.rgbnet = None
         else:
             # feature voxel grid + shallow MLP  (fine stage)
@@ -84,7 +81,7 @@ class DirectVoxGO(torch.nn.Module):
             self.k0 = grid.create_grid(
                     k0_type, channels=self.k0_dim, world_size=self.world_size,
                     xyz_min=self.xyz_min, xyz_max=self.xyz_max,
-                    config=self.k0_config)
+                    )
             self.rgbnet_direct = rgbnet_direct
             self.register_buffer('viewfreq', torch.FloatTensor([(2**i) for i in range(viewbase_pe)]))
             dim0 = (3+3*viewbase_pe*2)
@@ -153,8 +150,6 @@ class DirectVoxGO(torch.nn.Module):
             'fast_color_thres': self.fast_color_thres,
             'density_type': self.density_type,
             'k0_type': self.k0_type,
-            'density_config': self.density_config,
-            'k0_config': self.k0_config,
             **self.rgbnet_kwargs,
         }
 
@@ -447,7 +442,7 @@ class Alphas2Weights(torch.autograd.Function):
 
 ''' Ray and batch
 '''
-def get_rays(H, W, K, c2w, inverse_y, flip_x, flip_y, mode='center'):
+def get_rays(H, W, K, c2w, mode='center'):
     i, j = torch.meshgrid(
         torch.linspace(0, W-1, W, device=c2w.device),
         torch.linspace(0, H-1, H, device=c2w.device))  # pytorch's meshgrid has indexing='ij'
@@ -463,14 +458,8 @@ def get_rays(H, W, K, c2w, inverse_y, flip_x, flip_y, mode='center'):
     else:
         raise NotImplementedError
 
-    if flip_x:
-        i = i.flip((1,))
-    if flip_y:
-        j = j.flip((0,))
-    if inverse_y:
-        dirs = torch.stack([(i-K[0][2])/K[0][0], (j-K[1][2])/K[1][1], torch.ones_like(i)], -1)
-    else:
-        dirs = torch.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -torch.ones_like(i)], -1)
+
+    dirs = torch.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -torch.ones_like(i)], -1)
     # Rotate ray directions from camera frame to the world frame
     rays_d = torch.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
     # Translate camera frame's origin to the world frame. It is the origin of all rays.
@@ -481,36 +470,15 @@ def get_rays(H, W, K, c2w, inverse_y, flip_x, flip_y, mode='center'):
 
 
 
-def ndc_rays(H, W, focal, near, rays_o, rays_d):
-    # Shift ray origins to near plane
-    t = -(near + rays_o[...,2]) / rays_d[...,2]
-    rays_o = rays_o + t[...,None] * rays_d
 
-    # Projection
-    o0 = -1./(W/(2.*focal)) * rays_o[...,0] / rays_o[...,2]
-    o1 = -1./(H/(2.*focal)) * rays_o[...,1] / rays_o[...,2]
-    o2 = 1. + 2. * near / rays_o[...,2]
-
-    d0 = -1./(W/(2.*focal)) * (rays_d[...,0]/rays_d[...,2] - rays_o[...,0]/rays_o[...,2])
-    d1 = -1./(H/(2.*focal)) * (rays_d[...,1]/rays_d[...,2] - rays_o[...,1]/rays_o[...,2])
-    d2 = -2. * near / rays_o[...,2]
-
-    rays_o = torch.stack([o0,o1,o2], -1)
-    rays_d = torch.stack([d0,d1,d2], -1)
-
-    return rays_o, rays_d
-
-
-def get_rays_of_a_view(H, W, K, c2w, ndc, inverse_y, flip_x, flip_y, mode='center'):
-    rays_o, rays_d = get_rays(H, W, K, c2w, inverse_y=inverse_y, flip_x=flip_x, flip_y=flip_y, mode=mode)
+def get_rays_of_a_view(H, W, K, c2w, mode='center'):
+    rays_o, rays_d = get_rays(H, W, K, c2w, mode=mode)
     viewdirs = rays_d / rays_d.norm(dim=-1, keepdim=True)
-    if ndc:
-        rays_o, rays_d = ndc_rays(H, W, K[0][0], 1., rays_o, rays_d)
     return rays_o, rays_d, viewdirs
 
 
 @torch.no_grad()
-def get_training_rays(rgb_tr, train_poses, HW, Ks, ndc, inverse_y, flip_x, flip_y):
+def get_training_rays(rgb_tr, train_poses, HW, Ks):
     print('get_training_rays: start')
     assert len(np.unique(HW, axis=0)) == 1
     assert len(np.unique(Ks.reshape(len(Ks),-1), axis=0)) == 1
@@ -524,7 +492,7 @@ def get_training_rays(rgb_tr, train_poses, HW, Ks, ndc, inverse_y, flip_x, flip_
     imsz = [1] * len(rgb_tr)
     for i, c2w in enumerate(train_poses):
         rays_o, rays_d, viewdirs = get_rays_of_a_view(
-                H=H, W=W, K=K, c2w=c2w, ndc=ndc, inverse_y=inverse_y, flip_x=flip_x, flip_y=flip_y)
+                H=H, W=W, K=K, c2w=c2w)
         rays_o_tr[i].copy_(rays_o.to(rgb_tr.device))
         rays_d_tr[i].copy_(rays_d.to(rgb_tr.device))
         viewdirs_tr[i].copy_(viewdirs.to(rgb_tr.device))
@@ -537,7 +505,7 @@ def get_training_rays(rgb_tr, train_poses, HW, Ks, ndc, inverse_y, flip_x, flip_
 
 
 @torch.no_grad()
-def get_training_rays_in_maskcache_sampling(rgb_tr_ori, train_poses, HW, Ks, ndc, inverse_y, flip_x, flip_y, model, render_kwargs):
+def get_training_rays_in_maskcache_sampling(rgb_tr_ori, train_poses, HW, Ks,  model, render_kwargs):
     print('get_training_rays_in_maskcache_sampling: start')
     assert len(rgb_tr_ori) == len(train_poses) and len(rgb_tr_ori) == len(Ks) and len(rgb_tr_ori) == len(HW)
     CHUNK = 64
@@ -553,8 +521,7 @@ def get_training_rays_in_maskcache_sampling(rgb_tr_ori, train_poses, HW, Ks, ndc
     for c2w, img, (H, W), K in zip(train_poses, rgb_tr_ori, HW, Ks):
         assert img.shape[:2] == (H, W)
         rays_o, rays_d, viewdirs = get_rays_of_a_view(
-                H=H, W=W, K=K, c2w=c2w, ndc=ndc,
-                inverse_y=inverse_y, flip_x=flip_x, flip_y=flip_y)
+                H=H, W=W, K=K, c2w=c2w)
         mask = torch.empty(img.shape[:2], device=DEVICE, dtype=torch.bool)
         for i in range(0, img.shape[0], CHUNK):
             mask[i:i+CHUNK] = model.hit_coarse_geo(

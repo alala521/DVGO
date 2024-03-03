@@ -95,13 +95,9 @@ def _compute_bbox_by_cam_frustrm_bounded(cfg, HW, Ks, poses, i_train, near, far)
     xyz_max = -xyz_min
     for (H, W), K, c2w in zip(HW[i_train], Ks[i_train], poses[i_train]):
         rays_o, rays_d, viewdirs = dvgo.get_rays_of_a_view(
-                H=H, W=W, K=K, c2w=c2w,
-                ndc=cfg.data.ndc, inverse_y=cfg.data.inverse_y,
-                flip_x=cfg.data.flip_x, flip_y=cfg.data.flip_y)
-        if cfg.data.ndc:
-            pts_nf = torch.stack([rays_o+rays_d*near, rays_o+rays_d*far])
-        else:
-            pts_nf = torch.stack([rays_o+viewdirs*near, rays_o+viewdirs*far])
+                H=H, W=W, K=K, c2w=c2w)
+
+        pts_nf = torch.stack([rays_o+viewdirs*near, rays_o+viewdirs*far])
         xyz_min = torch.minimum(xyz_min, pts_nf.amin((0,1,2)))
         xyz_max = torch.maximum(xyz_max, pts_nf.amax((0,1,2)))
     return xyz_min, xyz_max
@@ -209,11 +205,7 @@ def scene_rep_reconstruction(args, cfg, cfg_model, cfg_train, xyz_min, xyz_max, 
         'near': data_dict['near'],
         'far': data_dict['far'],
         'bg': 1 if cfg.data.white_bkgd else 0,
-        'rand_bkgd': cfg.data.rand_bkgd,
-        'stepsize': cfg_model.stepsize,
-        'inverse_y': cfg.data.inverse_y,
-        'flip_x': cfg.data.flip_x,
-        'flip_y': cfg.data.flip_y,
+        'stepsize': cfg_model.stepsize
     }
 
     # init batch rays sampler
@@ -228,15 +220,13 @@ def scene_rep_reconstruction(args, cfg, cfg_model, cfg_train, xyz_min, xyz_max, 
                     rgb_tr_ori=rgb_tr_ori,
                     train_poses=poses[i_train],
                     HW=HW[i_train], Ks=Ks[i_train],
-                    ndc=cfg.data.ndc, inverse_y=cfg.data.inverse_y,
-                    flip_x=cfg.data.flip_x, flip_y=cfg.data.flip_y,
                     model=model, render_kwargs=render_kwargs)
         else:
             rgb_tr, rays_o_tr, rays_d_tr, viewdirs_tr, imsz = dvgo.get_training_rays(
                 rgb_tr=rgb_tr_ori,
                 train_poses=poses[i_train],
-                HW=HW[i_train], Ks=Ks[i_train], ndc=cfg.data.ndc, inverse_y=cfg.data.inverse_y,
-                flip_x=cfg.data.flip_x, flip_y=cfg.data.flip_y)
+                HW=HW[i_train], Ks=Ks[i_train]
+                )
         index_generator = dvgo.batch_indices_generator(len(rgb_tr), cfg_train.N_rand)
         batch_index_sampler = lambda: next(index_generator)
         return rgb_tr, rays_o_tr, rays_d_tr, viewdirs_tr, imsz, batch_index_sampler
@@ -254,9 +244,6 @@ def scene_rep_reconstruction(args, cfg, cfg_model, cfg_train, xyz_min, xyz_max, 
             model.mask_cache.mask[cnt.squeeze() <= 2] = False
         per_voxel_init()
 
-    if cfg_train.maskout_lt_nviews > 0:
-        model.update_occupancy_cache_lt_nviews(
-                rays_o_tr, rays_d_tr, imsz, render_kwargs, cfg_train.maskout_lt_nviews)
 
     # GOGO
     torch.cuda.empty_cache()
