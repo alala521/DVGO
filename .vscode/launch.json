@@ -6,7 +6,9 @@
             "type": "python",
             "request": "launch",
             "program": "run.py",
-            "env": {},
+            "env": {
+                "CUDA_VISIBLE_DEVICES":"1"
+            },
             "console": "integratedTerminal",
             "args": [
                 "--config",

@@ -1,6 +1,5 @@
 import os
 import time
-import functools
 import numpy as np
 
 import torch
@@ -241,13 +240,6 @@ class DirectVoxGO(torch.nn.Module):
         print('dvgo: voxel_count_views finish (eps time:', eps_time, 'sec)')
         return count
 
-    def density_total_variation_add_grad(self, weight, dense_mode):
-        w = weight * self.world_size.max() / 128
-        self.density.total_variation_add_grad(w, w, w, dense_mode)
-
-    def k0_total_variation_add_grad(self, weight, dense_mode):
-        w = weight * self.world_size.max() / 128
-        self.k0.total_variation_add_grad(w, w, w, dense_mode)
 
     def activate_density(self, density, interval=None):
         interval = interval if interval is not None else self.voxel_size_ratio
@@ -486,14 +478,7 @@ def get_rays(H, W, K, c2w, inverse_y, flip_x, flip_y, mode='center'):
     return rays_o, rays_d
 
 
-def get_rays_np(H, W, K, c2w):
-    i, j = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32), indexing='xy')
-    dirs = np.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -np.ones_like(i)], -1)
-    # Rotate ray directions from camera frame to the world frame
-    rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
-    # Translate camera frame's origin to the world frame. It is the origin of all rays.
-    rays_o = np.broadcast_to(c2w[:3,3], np.shape(rays_d))
-    return rays_o, rays_d
+
 
 
 def ndc_rays(H, W, focal, near, rays_o, rays_d):
